@@ -1,19 +1,17 @@
 import os
 import sys
-from tkinter import Tk, filedialog
+from tkinter import Tk, filedialog, messagebox
 
 from PIL import Image
 
 
 def get_program_dir() -> str:
     """配布物/実行ファイルが存在するディレクトリを返す（Nuitka対応）"""
-    # Nuitka 2.0+ の推奨ヘルパ。存在すれば最優先で使う
     try:
         from __compiled__ import containing_dir  # type: ignore
 
         return containing_dir
     except Exception:
-        # フォールバック：exeのフルパスからディレクトリを得る
         return os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
@@ -33,48 +31,61 @@ def process_image():
     root = Tk()
     root.withdraw()
 
-    # ユーザーに画像ファイルを選んでもらう
-    file_path = filedialog.askopenfilename(
-        title="画像を選んでください",
-        filetypes=[("画像ファイル", "*.png")],
-    )
-    if not file_path:
-        print("画像が選択されませんでした。")
-        return
+    try:
+        # ユーザーに画像ファイルを選んでもらう
+        file_path = filedialog.askopenfilename(
+            title="画像を選んでください",
+            filetypes=[("画像ファイル", "*.png")],
+        )
+        if not file_path:
+            messagebox.showinfo("処理中止", "画像が選択されませんでした。")
+            return
 
-    # 画像を開く
-    img = Image.open(file_path).convert("RGBA")
-    datas = img.getdata()
+        # 画像を開く
+        img = Image.open(file_path).convert("RGBA")
+        datas = img.getdata()
 
-    # グリーンバック透過処理
-    new_data = []
-    for item in datas:
-        r, g, b, a = item
-        if g == 255 and r == 0 and b == 0:
-            new_data.append((0, 0, 0, 0))
-        else:
-            new_data.append(item)
-    img.putdata(new_data)
+        # グリーンバック透過処理
+        new_data = []
+        for item in datas:
+            r, g, b, a = item
+            if g == 255 and r == 0 and b == 0:
+                new_data.append((0, 0, 0, 0))
+            else:
+                new_data.append(item)
+        img.putdata(new_data)
 
-    # 144x384にリサイズ
-    img = img.resize((144, 384), Image.NEAREST)
+        # 144x384にリサイズ
+        img = img.resize((144, 384), Image.NEAREST)
 
-    # 出力先フォルダを「実行ファイルのある場所」基準に固定
-    prog_dir = get_program_dir()
-    output_dir = os.path.join(prog_dir, "output")
-    os.makedirs(output_dir, exist_ok=True)
+        # 出力先フォルダを「実行ファイルのある場所」基準に固定
+        prog_dir = get_program_dir()
+        output_dir = os.path.join(prog_dir, "output")
+        os.makedirs(output_dir, exist_ok=True)
 
-    # 保存ファイル名を決定（元と同じ名前、被ったら連番）
-    base_name = os.path.basename(file_path)
-    output_name = get_unique_filename(
-        output_dir, os.path.splitext(base_name)[0] + ".png"
-    )
-    output_path = os.path.join(output_dir, output_name)
+        # 保存ファイル名を決定（元と同じ名前、被ったら連番）
+        base_name = os.path.basename(file_path)
+        output_name = get_unique_filename(
+            output_dir, os.path.splitext(base_name)[0] + ".png"
+        )
+        output_path = os.path.join(output_dir, output_name)
 
-    # PNGで保存
-    img.save(output_path, "PNG")
+        # PNGで保存
+        img.save(output_path, "PNG")
 
-    print(f"変換完了！ {output_path} に保存しました。")
+        # 完了をダイアログで通知
+        messagebox.showinfo("変換完了", f"変換が完了しました！\n保存先: {output_path}")
+
+    except Exception as e:
+        # 例外をダイアログで通知
+        messagebox.showerror("エラー", f"処理中にエラーが発生しました。\n\n{e}")
+
+    finally:
+        # 明示的に破棄
+        try:
+            root.destroy()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
