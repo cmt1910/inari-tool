@@ -1,7 +1,20 @@
 import os
+import sys
 from tkinter import Tk, filedialog
 
 from PIL import Image
+
+
+def get_program_dir() -> str:
+    """配布物/実行ファイルが存在するディレクトリを返す（Nuitka対応）"""
+    # Nuitka 2.0+ の推奨ヘルパ。存在すれば最優先で使う
+    try:
+        from __compiled__ import containing_dir  # type: ignore
+
+        return containing_dir
+    except Exception:
+        # フォールバック：exeのフルパスからディレクトリを得る
+        return os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
 def get_unique_filename(directory, filename):
@@ -37,7 +50,6 @@ def process_image():
     new_data = []
     for item in datas:
         r, g, b, a = item
-        # 緑っぽい色を透過にする（閾値は調整可能）
         if g == 255 and r == 0 and b == 0:
             new_data.append((0, 0, 0, 0))
         else:
@@ -47,9 +59,9 @@ def process_image():
     # 144x384にリサイズ
     img = img.resize((144, 384), Image.NEAREST)
 
-    # 出力先フォルダを固定
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_dir = os.path.join(script_dir, "output")
+    # 出力先フォルダを「実行ファイルのある場所」基準に固定
+    prog_dir = get_program_dir()
+    output_dir = os.path.join(prog_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
 
     # 保存ファイル名を決定（元と同じ名前、被ったら連番）
