@@ -23,7 +23,7 @@ def process_image():
     # ユーザーに画像ファイルを選んでもらう
     file_path = filedialog.askopenfilename(
         title="画像を選んでください",
-        filetypes=[("画像ファイル", "*.png;*.jpg;*.jpeg;*.bmp")],
+        filetypes=[("画像ファイル", "*.png")],
     )
     if not file_path:
         print("画像が選択されませんでした。")
