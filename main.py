@@ -55,8 +55,20 @@ def process_image():
                 new_data.append(item)
         img.putdata(new_data)
 
-        # 144x384にリサイズ
-        img = img.resize((144, 384), Image.NEAREST)
+        # 左上を基準に 144x384 でトリミング（不足は透明でパディング）
+        target_w, target_h = 144, 384
+        src_w, src_h = img.size
+        # まずは画像内で切り取れる最大の範囲を左上から切り出す
+        crop_box = (0, 0, min(target_w, src_w), min(target_h, src_h))
+        cropped = img.crop(crop_box)
+
+        # 出力は必ず 144x384 にする。小さい場合は透明キャンバスに貼り付け。
+        if cropped.size != (target_w, target_h):
+            canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+            canvas.paste(cropped, (0, 0))
+            img = canvas
+        else:
+            img = cropped
 
         # 出力先フォルダを「実行ファイルのある場所」基準に固定
         prog_dir = get_program_dir()
