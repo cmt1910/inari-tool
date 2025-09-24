@@ -11,5 +11,5 @@ Windowsのみ動作を確認しています。
 uvをインストールした上でpowershellで以下のコマンドを実行してください。
 
 ```powershell
-uv run python -m nuitka --standalone --onefile --enable-plugin=tk-inter --windows-console-mode=disable main.py -o "inari-tool"
+uv run python -m nuitka --standalone --onefile --enable-plugin=tk-inter --windows-console-mode=disable "./src/main.py" -o "inari-tool"
 ```
