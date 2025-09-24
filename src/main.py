@@ -26,74 +26,97 @@ def get_unique_filename(directory, filename):
     return new_filename
 
 
+def convert_image(file_path: str, output_dir: str) -> str:
+    with Image.open(file_path) as opened:
+        img = opened.convert("RGBA")
+
+    datas = img.getdata()
+    new_data = []
+    for item in datas:
+        r, g, b, a = item
+        if g == 255 and r == 0 and b == 0:
+            new_data.append((0, 0, 0, 0))
+        else:
+            new_data.append(item)
+    img.putdata(new_data)
+
+    target_w, target_h = 144, 384
+    src_w, src_h = img.size
+    crop_box = (0, 0, min(target_w, src_w), min(target_h, src_h))
+    cropped = img.crop(crop_box)
+
+    if cropped.size != (target_w, target_h):
+        canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+        canvas.paste(cropped, (0, 0))
+        result = canvas
+    else:
+        result = cropped
+
+    base_name = os.path.basename(file_path)
+    output_name = get_unique_filename(
+        output_dir, os.path.splitext(base_name)[0] + ".png"
+    )
+    output_path = os.path.join(output_dir, output_name)
+    result.save(output_path, "PNG")
+    return output_path
+
+
 def process_image():
-    # TkinterのGUIを非表示にする
     root = Tk()
     root.withdraw()
 
     try:
-        # ユーザーに画像ファイルを選んでもらう
-        file_path = filedialog.askopenfilename(
+        file_paths = filedialog.askopenfilenames(
             title="画像を選んでください",
             filetypes=[("画像ファイル", "*.png")],
         )
-        if not file_path:
+        if not file_paths:
             messagebox.showinfo("処理中止", "画像が選択されませんでした。")
             return
 
-        # 画像を開く
-        img = Image.open(file_path).convert("RGBA")
-        datas = img.getdata()
-
-        # グリーンバック透過処理
-        new_data = []
-        for item in datas:
-            r, g, b, a = item
-            if g == 255 and r == 0 and b == 0:
-                new_data.append((0, 0, 0, 0))
-            else:
-                new_data.append(item)
-        img.putdata(new_data)
-
-        # 左上を基準に 144x384 でトリミング（不足は透明でパディング）
-        target_w, target_h = 144, 384
-        src_w, src_h = img.size
-        # まずは画像内で切り取れる最大の範囲を左上から切り出す
-        crop_box = (0, 0, min(target_w, src_w), min(target_h, src_h))
-        cropped = img.crop(crop_box)
-
-        # 出力は必ず 144x384 にする。小さい場合は透明キャンバスに貼り付け。
-        if cropped.size != (target_w, target_h):
-            canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-            canvas.paste(cropped, (0, 0))
-            img = canvas
-        else:
-            img = cropped
-
-        # 出力先フォルダを「実行ファイルのある場所」基準に固定
         prog_dir = get_program_dir()
         output_dir = os.path.join(prog_dir, "output")
         os.makedirs(output_dir, exist_ok=True)
 
-        # 保存ファイル名を決定（元と同じ名前、被ったら連番）
-        base_name = os.path.basename(file_path)
-        output_name = get_unique_filename(
-            output_dir, os.path.splitext(base_name)[0] + ".png"
-        )
-        output_path = os.path.join(output_dir, output_name)
+        success = []
+        errors = []
+        for file_path in file_paths:
+            try:
+                output_path = convert_image(file_path, output_dir)
+                success.append((file_path, output_path))
+            except Exception as exc:
+                errors.append((file_path, exc))
 
-        # PNGで保存
-        img.save(output_path, "PNG")
+        if success:
+            if len(success) == 1:
+                _, output_path = success[0]
+                messagebox.showinfo(
+                    "変換完了", f"変換が完了しました！\n保存先: {output_path}"
+                )
+            else:
+                lines = [
+                    f"{os.path.basename(src)}: {dst}" for src, dst in success
+                ]
+                message = [
+                    f"{len(success)}件の画像を変換しました。",
+                    "保存先:",
+                    *lines,
+                ]
+                messagebox.showinfo("変換完了", "\n".join(message))
 
-        # 完了をダイアログで通知
-        messagebox.showinfo("変換完了", f"変換が完了しました！\n保存先: {output_path}")
+        if errors:
+            error_lines = [
+                f"{os.path.basename(src)}: {err}" for src, err in errors
+            ]
+            messagebox.showerror(
+                "エラー",
+                "一部の画像でエラーが発生しました。\n\n" + "\n".join(error_lines),
+            )
 
     except Exception as e:
-        # 例外をダイアログで通知
         messagebox.showerror("エラー", f"処理中にエラーが発生しました。\n\n{e}")
 
     finally:
-        # 明示的に破棄
         try:
             root.destroy()
         except Exception:
