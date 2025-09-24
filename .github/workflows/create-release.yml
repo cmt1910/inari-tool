@@ -1,0 +1,106 @@
+name: 手動リリース
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.13"
+  LICENSE_FILE: "THIRD_PARTY_LICENSES.txt"
+  BUILD_OUTPUT: "dist/inari-tool.exe"
+
+jobs:
+  build-and-release:
+    name: ビルドとリリース
+    runs-on: windows-latest
+    steps:
+      - name: リポジトリのチェックアウト
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: uv のセットアップ
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 依存関係の同期
+        run: uv sync --locked --all-groups
+        shell: bash
+
+      - name: サードパーティライセンスの生成
+        run: |
+          uvx pip-licenses --format=plain --output-file "${{ env.LICENSE_FILE }}"
+        shell: bash
+
+      - name: バージョン番号の抽出
+        id: version
+        run: |
+          VERSION=$(uv run python -c "import tomllib, pathlib; data = tomllib.loads(pathlib.Path('pyproject.toml').read_text()); print('v' + data['project']['version'])")
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Nuitka によるビルド
+        run: |
+          mkdir -p dist
+          uv run nuitka --standalone --onefile src/main.py --output-dir dist --output-filename inari-tool.exe
+        shell: bash
+
+      - name: リリース用ファイルの確認
+        run: |
+          test -f "${{ env.LICENSE_FILE }}" || { echo "::error::サードパーティライセンスファイル ${{ env.LICENSE_FILE }} が見つかりません。"; exit 1; }
+          test -f README.md || { echo "::error::README.md が見つかりません。"; exit 1; }
+          test -f "${{ env.BUILD_OUTPUT }}" || { echo "::error::ビルド成果物 ${{ env.BUILD_OUTPUT }} が見つかりません。"; exit 1; }
+        shell: bash
+
+      - name: Git タグの作成とプッシュ
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.value }} ${{ github.sha }}
+          git push origin ${{ steps.version.outputs.value }}
+        shell: bash
+
+      - name: GitHub Release の作成
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.value }}
+          release_name: ${{ steps.version.outputs.value }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      - name: README の添付
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: README.md
+          asset_name: README-${{ steps.version.outputs.value }}.md
+          asset_content_type: text/markdown
+
+      - name: サードパーティライセンスの添付
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.LICENSE_FILE }}
+          asset_name: licenses-${{ steps.version.outputs.value }}.txt
+          asset_content_type: text/plain
+
+      - name: ビルド成果物の添付
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.BUILD_OUTPUT }}
+          asset_name: inari-tool-${{ steps.version.outputs.value }}.exe
+          asset_content_type: application/vnd.microsoft.portable-executable
