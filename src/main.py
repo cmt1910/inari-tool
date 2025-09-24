@@ -5,6 +5,27 @@ from tkinter import Tk, filedialog, messagebox
 from PIL import Image
 
 
+def collect_cli_file_paths():
+    """コマンドライン（ドラッグ＆ドロップ）で渡されたファイルを検証する"""
+    args = sys.argv[1:]
+    if not args:
+        return None, []
+
+    valid_paths = []
+    errors = []
+    for raw_path in args:
+        normalized = os.path.abspath(raw_path)
+        if not os.path.exists(normalized):
+            errors.append((raw_path, "ファイルが見つかりません。"))
+            continue
+        if not os.path.isfile(normalized):
+            errors.append((raw_path, "ファイルではありません。"))
+            continue
+        valid_paths.append(normalized)
+
+    return valid_paths, errors
+
+
 def get_program_dir() -> str:
     """配布物/実行ファイルが存在するディレクトリを返す（Nuitka対応）"""
     try:
@@ -61,31 +82,48 @@ def convert_image(file_path: str, output_dir: str) -> str:
     return output_path
 
 
-def process_image():
+def process_image(initial_paths=None, initial_errors=None):
     root = Tk()
     root.withdraw()
 
     try:
-        file_paths = filedialog.askopenfilenames(
-            title="画像を選んでください",
-            filetypes=[("画像ファイル", "*.png")],
-        )
-        if not file_paths:
-            messagebox.showinfo("処理中止", "画像が選択されませんでした。")
-            return
+        errors = [] if initial_errors is None else list(initial_errors)
+
+        if initial_paths is None:
+            file_paths = filedialog.askopenfilenames(
+                title="画像を選んでください",
+                filetypes=[("画像ファイル", "*.png")],
+            )
+            if not file_paths:
+                messagebox.showinfo("処理中止", "画像が選択されませんでした。")
+                return
+        else:
+            file_paths = initial_paths
+            if not file_paths and errors:
+                error_lines = [
+                    f"{os.path.basename(src)}: {msg}"
+                    for src, msg in errors
+                ]
+                messagebox.showerror(
+                    "エラー",
+                    "ファイルを読み込めませんでした。\n\n" + "\n".join(error_lines),
+                )
+                return
+            if not file_paths:
+                messagebox.showinfo("処理中止", "画像が選択されませんでした。")
+                return
 
         prog_dir = get_program_dir()
         output_dir = os.path.join(prog_dir, "output")
         os.makedirs(output_dir, exist_ok=True)
 
         success = []
-        errors = []
         for file_path in file_paths:
             try:
                 output_path = convert_image(file_path, output_dir)
                 success.append((file_path, output_path))
             except Exception as exc:
-                errors.append((file_path, exc))
+                errors.append((file_path, str(exc)))
 
         if success:
             if len(success) == 1:
@@ -106,7 +144,7 @@ def process_image():
 
         if errors:
             error_lines = [
-                f"{os.path.basename(src)}: {err}" for src, err in errors
+                f"{os.path.basename(src)}: {msg}" for src, msg in errors
             ]
             messagebox.showerror(
                 "エラー",
@@ -124,4 +162,8 @@ def process_image():
 
 
 if __name__ == "__main__":
-    process_image()
+    cli_files, cli_errors = collect_cli_file_paths()
+    if cli_files is None:
+        process_image()
+    else:
+        process_image(cli_files, cli_errors)
